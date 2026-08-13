@@ -28,7 +28,7 @@ POST /query  --------------------------->  FastAPI backend
         |                               - run EXPLAIN first to catch errors
         |                               - enforce row limit + timeout
         |                          4. Execute against Postgres
-        |                          5. Send results back to Gemini to
+        |                          5. Send results back to OPENAI to
         |                             generate a plain-English summary
         v                                       |
 Chat UI renders: generated SQL (collapsible)  <--
