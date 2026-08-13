@@ -50,6 +50,10 @@ export type QueryResult = {
   credits_remaining: number;
 };
 
+export type BackendHealthResponse = {
+  status: string;
+};
+
 export async function askQuestion(question: string, token: string, databaseUrl?: string): Promise<QueryResult> {
   const res = await fetch(`${API_URL}/query`, {
     method: "POST",
@@ -64,8 +68,7 @@ export async function askQuestion(question: string, token: string, databaseUrl?:
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(body.detail || `Request failed (${res.status})`);
+    throw new Error(`Request failed (${res.status})`);
   }
 
   return res.json();
@@ -97,8 +100,7 @@ export async function register(email: string, password: string): Promise<AuthRes
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(body.detail || `Request failed (${res.status})`);
+    throw new Error(`Request failed (${res.status})`);
   }
 
   return res.json();
@@ -112,8 +114,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(body.detail || `Request failed (${res.status})`);
+    throw new Error(`Request failed (${res.status})`);
   }
 
   return res.json();
@@ -127,8 +128,7 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResponse> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(body.detail || `Request failed (${res.status})`);
+    throw new Error(`Request failed (${res.status})`);
   }
 
   return res.json();
@@ -141,9 +141,29 @@ export async function getCurrentUser(token: string): Promise<CurrentUserResponse
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(body.detail || `Request failed (${res.status})`);
+    throw new Error(`Request failed (${res.status})`);
   }
 
   return res.json();
+}
+
+export async function checkBackendHealth(): Promise<BackendHealthResponse> {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const res = await fetch(`${API_URL}/health`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Health check failed (${res.status})`);
+    }
+
+    return res.json();
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
 }

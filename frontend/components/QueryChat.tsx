@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { askQuestion, type QueryResult, type SchemaData, getSchema } from "../lib/api";
+import { askQuestion, checkBackendHealth, type QueryResult, type SchemaData, getSchema } from "../lib/api";
+import { getFriendlyError } from "../lib/errors";
 import {
   getAuthToken,
   getStoredDatabaseUrl,
@@ -16,6 +17,8 @@ const DEFAULT_EXAMPLE_QUESTIONS = [
 ];
 
 const MAX_QUESTION_CHARS = 500;
+const WARMUP_MAX_WAIT_MS = 90000;
+const WARMUP_BACKOFF_MS = [0, 3000, 5000, 8000, 12000];
 
 function formatDatabaseLabel(url: string): string {
   if (!url) return "Default Database";
@@ -36,6 +39,8 @@ export default function QueryChat({ customDatabaseUrl }: { customDatabaseUrl?: s
   const [dbUrl, setDbUrl] = useState(customDatabaseUrl || "");
   const [exampleQuestions, setExampleQuestions] = useState(DEFAULT_EXAMPLE_QUESTIONS);
   const [token, setToken] = useState("");
+  const [backendStatus, setBackendStatus] = useState<"checking" | "warming" | "ready" | "offline">("checking");
+  const [warmingSeconds, setWarmingSeconds] = useState(0);
 
   useEffect(() => {
     const storedDb = getStoredDatabaseUrl();
@@ -51,6 +56,62 @@ export default function QueryChat({ customDatabaseUrl }: { customDatabaseUrl?: s
     };
     window.addEventListener("appSessionChanged", handleSessionChange);
     return () => window.removeEventListener("appSessionChanged", handleSessionChange);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let retryTimeout: number | undefined;
+    let elapsedInterval: number | undefined;
+    let attemptIndex = 0;
+    const startedAt = Date.now();
+
+    const clearTimers = () => {
+      if (retryTimeout !== undefined) {
+        window.clearTimeout(retryTimeout);
+      }
+      if (elapsedInterval !== undefined) {
+        window.clearInterval(elapsedInterval);
+      }
+    };
+
+    const runHealthCheck = async () => {
+      try {
+        const health = await checkBackendHealth();
+        if (!active) return;
+        if (health.status === "ok") {
+          setBackendStatus("ready");
+          clearTimers();
+          return;
+        }
+      } catch {
+        // handled below
+      }
+
+      if (!active) return;
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= WARMUP_MAX_WAIT_MS) {
+        setBackendStatus("offline");
+        clearTimers();
+        return;
+      }
+
+      setBackendStatus("warming");
+      const nextDelay = WARMUP_BACKOFF_MS[Math.min(attemptIndex, WARMUP_BACKOFF_MS.length - 1)];
+      attemptIndex += 1;
+      retryTimeout = window.setTimeout(runHealthCheck, nextDelay);
+    };
+
+    elapsedInterval = window.setInterval(() => {
+      if (!active) return;
+      setWarmingSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    runHealthCheck();
+
+    return () => {
+      active = false;
+      clearTimers();
+    };
   }, []);
 
   const generateDynamicQuestions = async () => {
@@ -102,6 +163,10 @@ export default function QueryChat({ customDatabaseUrl }: { customDatabaseUrl?: s
       setError("Please login before running queries.");
       return;
     }
+    if (backendStatus !== "ready") {
+      setError("The backend is still starting. Please wait a moment and try again.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -112,7 +177,7 @@ export default function QueryChat({ customDatabaseUrl }: { customDatabaseUrl?: s
       setStoredCredits(res.credits_remaining);
       window.dispatchEvent(new Event("appSessionChanged"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(getFriendlyError("query", err));
     } finally {
       setLoading(false);
     }
@@ -263,19 +328,34 @@ export default function QueryChat({ customDatabaseUrl }: { customDatabaseUrl?: s
         />
         <button
           type="submit"
-          disabled={loading || !token}
+          disabled={loading || !token || backendStatus !== "ready"}
           style={{
             padding: "0.75rem 1.25rem",
             borderRadius: 8,
             border: "none",
-            background: token ? "#4f8cff" : "#555",
+            background: token && backendStatus === "ready" ? "#4f8cff" : "#555",
             color: "#fff",
-            cursor: loading ? "not-allowed" : "pointer",
+            cursor: loading || !token || backendStatus !== "ready" ? "not-allowed" : "pointer",
           }}
         >
-          {loading ? "Thinking..." : token ? "Ask" : "Login required"}
+          {loading ? "Thinking..." : !token ? "Login required" : backendStatus === "ready" ? "Ask" : "Starting backend..."}
         </button>
       </form>
+
+      {(backendStatus === "checking" || backendStatus === "warming" || backendStatus === "offline") && (
+        <div style={{
+          padding: "0.75rem",
+          borderRadius: 8,
+          background: backendStatus === "offline" ? "#2a1414" : "#1a1d24",
+          border: "1px solid #333",
+          color: "#e6e6e6",
+          fontSize: "0.85rem"
+        }}>
+          {backendStatus === "offline"
+            ? "Backend is still unavailable. Please retry in a minute."
+            : `Starting server on first request. This can take about a minute (${warmingSeconds}s elapsed).`}
+        </div>
+      )}
 
       <div style={{ fontSize: "0.78rem", color: "#9a9a9a", textAlign: "right" }}>
         {question.length}/{MAX_QUESTION_CHARS} characters
@@ -290,14 +370,15 @@ export default function QueryChat({ customDatabaseUrl }: { customDatabaseUrl?: s
                 setQuestion(q);
                 handleSubmit(q);
               }}
+              disabled={backendStatus !== "ready"}
               style={{
                 padding: "0.4rem 0.75rem",
                 borderRadius: 999,
                 border: "1px solid #333",
                 background: "transparent",
-                color: "#9a9a9a",
+                color: backendStatus === "ready" ? "#9a9a9a" : "#666",
                 fontSize: "0.85rem",
-                cursor: "pointer",
+                cursor: backendStatus === "ready" ? "pointer" : "not-allowed",
               }}
             >
               {q}

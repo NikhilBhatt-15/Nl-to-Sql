@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getSchema, type SchemaData, type Column, type Table } from "../lib/api";
+import { getFriendlyError } from "../lib/errors";
 import { getStoredDatabaseUrl, setStoredDatabaseUrl } from "../lib/storage";
 import {
   ReactFlow,
@@ -188,7 +189,7 @@ export default function SchemaViewer({ customDatabaseUrl }: SchemaViewerProps) {
       setSchemaData(data);
       transformSchemaToFlow(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load schema");
+      setError(getFriendlyError("schema", err));
     } finally {
       setLoading(false);
     }

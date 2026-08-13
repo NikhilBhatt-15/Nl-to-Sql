@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { getCurrentUser, loginWithGoogle } from "../lib/api";
+import { checkBackendHealth, getCurrentUser, loginWithGoogle } from "../lib/api";
+import { getFriendlyError } from "../lib/errors";
 import {
   clearAuthSession,
   getAuthToken,
@@ -17,6 +18,7 @@ import {
 export default function Navigation() {
   const pathname = usePathname();
   const [currentDatabaseLabel, setCurrentDatabaseLabel] = useState<string>("Default Database");
+  const [backendStatus, setBackendStatus] = useState<"checking" | "warming" | "online" | "offline">("checking");
   const [token, setToken] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [credits, setCredits] = useState(0);
@@ -82,7 +84,7 @@ export default function Navigation() {
             setShowAuthForm(false);
             window.dispatchEvent(new Event("appSessionChanged"));
           } catch (err) {
-            setAuthError(err instanceof Error ? err.message : "Google login failed.");
+            setAuthError(getFriendlyError("auth", err));
           } finally {
             setAuthLoading(false);
           }
@@ -115,6 +117,64 @@ export default function Navigation() {
     script.onload = initialize;
     document.head.appendChild(script);
   }, [googleClientId, showAuthForm]);
+
+  useEffect(() => {
+    let active = true;
+    let retryTimeout: number | undefined;
+    let attemptIndex = 0;
+    const startedAt = Date.now();
+
+    const clearRetry = () => {
+      if (retryTimeout !== undefined) {
+        window.clearTimeout(retryTimeout);
+      }
+    };
+
+    const refreshBackendStatus = async () => {
+      try {
+        const health = await checkBackendHealth();
+        if (!active) return;
+        if (health.status === "ok") {
+          setBackendStatus("online");
+          clearRetry();
+          return;
+        }
+      } catch {
+        // handled below
+      }
+
+      if (!active) return;
+      if (Date.now() - startedAt >= 90000) {
+        setBackendStatus("offline");
+        clearRetry();
+        return;
+      }
+
+      setBackendStatus("warming");
+      const delays = [0, 3000, 5000, 8000, 12000];
+      const nextDelay = delays[Math.min(attemptIndex, delays.length - 1)];
+      attemptIndex += 1;
+      retryTimeout = window.setTimeout(refreshBackendStatus, nextDelay);
+    };
+
+    refreshBackendStatus();
+    const intervalId = window.setInterval(refreshBackendStatus, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshBackendStatus();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      active = false;
+      clearRetry();
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     const existingToken = getAuthToken();
@@ -191,6 +251,26 @@ export default function Navigation() {
       </div>
       
       <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.45rem",
+          padding: "0.5rem 0.75rem",
+          background: "#1a1d24",
+          borderRadius: "4px",
+          border: "1px solid #333"
+        }}>
+          <span style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "999px",
+            background: backendStatus === "online" ? "#7ee787" : backendStatus === "offline" ? "#ff6b6b" : "#f2cc60"
+          }} />
+          <span style={{ fontSize: "0.8rem", color: "#9a9a9a" }}>
+            {backendStatus === "online" ? "Backend online" : backendStatus === "offline" ? "Backend offline" : "Starting backend..."}
+          </span>
+        </div>
+
         {token ? (
           <div style={{
             display: "flex",
