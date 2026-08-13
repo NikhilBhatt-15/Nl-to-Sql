@@ -17,6 +17,7 @@ class Settings:
         "http://localhost:3001",
         "http://localhost:3002",
         "http://localhost:3003",
+        "https://nl-to-sql-three.vercel.app"
     ]
     auth_database_url: str = os.environ.get("AUTH_DATABASE_URL", "")
     auth_db_path: str = os.environ.get("AUTH_DB_PATH", "./data/auth.db")
