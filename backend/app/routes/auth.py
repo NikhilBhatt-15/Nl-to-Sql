@@ -1,10 +1,10 @@
-import sqlite3
 import secrets
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
+from sqlalchemy.exc import IntegrityError
 
 from app import auth_store
 from app.config import settings
@@ -32,7 +32,7 @@ def register(payload: RegisterRequest):
             password_hash=hash_password(payload.password),
             starting_credits=settings.starting_credits,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         raise HTTPException(status_code=409, detail="Email is already registered.")
 
     token = create_access_token(str(user.id))
@@ -89,7 +89,7 @@ def google_auth(payload: GoogleAuthRequest):
                     password_hash=hash_password(secrets.token_urlsafe(32)),
                     starting_credits=settings.starting_credits,
                 )
-            except sqlite3.IntegrityError:
+            except IntegrityError:
                 user = auth_store.get_user_by_email(email)
 
         if user is None:

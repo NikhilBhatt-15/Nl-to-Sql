@@ -53,7 +53,7 @@ nl-to-sql-assistant/
 │   │   ├── config.py              # Runtime settings/env config
 │   │   ├── schemas.py             # Pydantic API schemas
 │   │   ├── security.py            # Password hashing + JWT helpers
-│   │   ├── auth_store.py          # SQLite user + credits store
+│   │   ├── auth_store.py          # Auth user + credits store (Postgres-ready)
 │   │   ├── dependencies.py        # Auth dependency injection
 │   │   └── routes/
 │   │       ├── auth.py            # /auth/register /auth/login /auth/me
@@ -98,7 +98,8 @@ Required env vars in `backend/.env`:
 - `JWT_SECRET_KEY`: secret used to sign auth tokens
 - `STARTING_CREDITS`: credits every new user starts with
 - `CREDITS_PER_QUERY`: credits consumed for each successful query request
-- `AUTH_DB_PATH`: path for the auth/credits sqlite database (defaults to `./data/auth.db`)
+- `AUTH_DATABASE_URL`: Postgres URL for auth/users/credits storage
+- `AUTH_DB_PATH`: optional sqlite fallback path when `AUTH_DATABASE_URL` is not set
 - `REDIS_URL`: Redis connection URL used for rate limiting and daily caps
 - `GOOGLE_CLIENT_ID`: Google OAuth web client ID for `/auth/google`
 - `PASSWORD_AUTH_ENABLED`: keep `false` for Google-only authentication

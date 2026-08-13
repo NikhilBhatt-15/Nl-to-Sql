@@ -18,6 +18,7 @@ class Settings:
         "http://localhost:3002",
         "http://localhost:3003",
     ]
+    auth_database_url: str = os.environ.get("AUTH_DATABASE_URL", "")
     auth_db_path: str = os.environ.get("AUTH_DB_PATH", "./data/auth.db")
     jwt_secret_key: str = os.environ.get("JWT_SECRET_KEY", "change-me-in-production")
     jwt_algorithm: str = os.environ.get("JWT_ALGORITHM", "HS256")
